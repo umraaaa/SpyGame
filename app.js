@@ -53,16 +53,42 @@ function playUrl(url, onEnd) {
 }
 function stopAudio() { audio.onended = null; audio.pause(); }
 
-$('#vol').oninput = e => { audio.volume = +e.target.value; localStorage.setItem('mspyVol', e.target.value); };
+$('#vol').oninput = e => { audio.volume = +e.target.value; localStorage.setItem('mspyVol', e.target.value); updateMuteBtn(); };
 audio.volume = +(localStorage.getItem('mspyVol') ?? 1);
 $('#vol').value = audio.volume;
 
+// 點喇叭圖示 = 靜音 / 取消靜音（記住靜音前的音量）
+const btnMute = $('#btnMute');
+let lastVol = audio.volume > 0 ? audio.volume : 1;
+btnMute.onclick = () => {
+  if (audio.volume > 0) { lastVol = audio.volume; audio.volume = 0; }
+  else audio.volume = lastVol || 1;
+  $('#vol').value = audio.volume;
+  localStorage.setItem('mspyVol', audio.volume);
+  updateMuteBtn();
+};
+function updateMuteBtn() { btnMute.textContent = audio.volume === 0 ? '🔇' : '🔊'; }
+updateMuteBtn();
+
 // 暫停 / 繼續（涵蓋自己的歌與複盤，因為只有一個 Audio）
 const btnPause = $('#btnPause');
-btnPause.onclick = () => { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); updatePauseBtn(); };
+btnPause.onclick = () => { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); };
 function updatePauseBtn() { btnPause.textContent = audio.paused ? '▶️' : '⏸️'; }
-audio.addEventListener('play', updatePauseBtn);
-audio.addEventListener('pause', updatePauseBtn);
+
+// 試聽按鈕會依實際播放狀態顯示 ▶ / ⏸，讓同一顆按鈕可以停下試聽
+function updatePreviewBtns() {
+  document.querySelectorAll('.tryBtn').forEach(b => {
+    const active = b.dataset.url === audio.src && audio.paused === false;
+    b.textContent = active ? '⏸' : '▶';
+  });
+}
+function togglePreview(url) {
+  if (audio.src === url && audio.paused === false) audio.pause();
+  else playUrl(url, null);
+}
+audio.addEventListener('play', () => { updatePauseBtn(); updatePreviewBtns(); });
+audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); });
+audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
 // ===== iTunes 搜尋（fetch + CORS，在自己裝置上執行）=====
 // 改用 fetch（iTunes 支援 CORS）而非 JSONP：避免手機防追蹤機制擋 script 注入。
@@ -552,7 +578,7 @@ function voteBoardCard(r) {
 function render(s) {
   if (s == null) return;
   ensurePanels(s.contentMode);
-  $('#btnPause').classList.toggle('hidden', s.contentMode !== 'song' || s.phase !== 'game');
+  $('#btnPause').classList.toggle('hidden', s.contentMode !== 'song');
 
   const r = s.round;
   // 參與者整回合不能編題庫（在台上）
@@ -793,22 +819,24 @@ function renderResults(el, side, results) {
   }));
   if (songs.length === 0) { box.innerHTML = '<p class="dim">沒有找到可試聽的歌</p>'; return; }
   box.innerHTML = songs.map((sg, i) => songRow(sg, {
-    buttons: `<button class="btn mini ghost bTry" data-i="${i}">▶</button><button class="btn mini bPick" data-i="${i}">選</button>`,
+    buttons: `<button class="btn mini ghost tryBtn" data-url="${esc(sg.url)}">▶</button><button class="btn mini bPick" data-i="${i}">選</button>`,
   })).join('');
-  box.querySelectorAll('.bTry').forEach(b => b.onclick = () => playUrl(songs[+b.dataset.i].url, null));
+  box.querySelectorAll('.tryBtn').forEach(b => b.onclick = () => togglePreview(b.dataset.url));
   box.querySelectorAll('.bPick').forEach(b => b.onclick = () => {
     pending[side].song = songs[+b.dataset.i];
     stopAudio(); box.innerHTML = ''; renderSelected(el, side);
   });
+  updatePreviewBtns();
 }
 
 function renderSelected(el, side) {
   const sg = pending[side].song;
   el.querySelector('.pSel').innerHTML = sg == null ? '' :
-    songRow(sg, { sel: true, buttons: '<button class="btn mini ghost bTry2">▶</button>' });
-  const b = el.querySelector('.bTry2');
-  if (b) b.onclick = () => playUrl(sg.url, null);
+    songRow(sg, { sel: true, buttons: `<button class="btn mini ghost tryBtn" data-url="${esc(sg.url)}">▶</button>` });
+  const b = el.querySelector('.tryBtn');
+  if (b) b.onclick = () => togglePreview(sg.url);
   const hint = el.querySelector('.pHint'); if (hint) hint.value = pending[side].hint;
+  updatePreviewBtns();
 }
 
 function clearPendingUI() {
