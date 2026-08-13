@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v7';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v8';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -85,26 +85,52 @@ audio.addEventListener('play', () => { updatePauseBtn(); updatePreviewBtns(); })
 audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); });
 audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
-// ===== iTunes 搜尋（fetch + CORS，在自己裝置上執行）=====
-// 改用 fetch（iTunes 支援 CORS）而非 JSONP：避免手機防追蹤機制擋 script 注入。
-// 同關鍵字快取，重複搜尋不再打 API，順便降低 Apple 對共用 IP 的限流。
+// ===== iTunes 搜尋 =====
+// iOS Safari 的 fetch 常對 itunes 直接 "Load failed"（CORS / Private Relay），
+// 但 <script> JSONP 不受 CORS 限制。所以先試 fetch（桌面可用），失敗退回 JSONP（iOS 可用）。
+// 同關鍵字快取：重複搜尋 0 請求，降低 Apple 對共用 IP 的限流。
 const searchCache = new Map();
 async function itunesSearch(term) {
   const key = term.trim().toLowerCase();
   if (searchCache.has(key)) return searchCache.get(key);
-  // _=時間戳：保險，擋掉會無視 no-store、只認網址的中間層代理快取
-  const url = 'https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term='
-      + encodeURIComponent(term) + '&_=' + Date.now();
+  let results;
+  try { results = await itunesFetch(term); }
+  catch (e) {
+    if (e.message === 'rate') throw e; // 明確被限流就別再用 JSONP 撞一次
+    results = await itunesJsonp(term);
+  }
+  searchCache.set(key, results);
+  return results;
+}
+
+function itunesUrl(term) {
+  return 'https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term='
+    + encodeURIComponent(term) + '&_=' + Date.now();
+}
+
+async function itunesFetch(term) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 10000);
+  const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const r = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
-    if (r.status === 403 || r.status === 429) throw new Error('rate'); // 被限流
+    const r = await fetch(itunesUrl(term), { cache: 'no-store', signal: ctrl.signal });
+    if (r.status === 403 || r.status === 429) throw new Error('rate');
     if (r.ok === false) throw new Error('http ' + r.status);
-    const results = (await r.json()).results || [];
-    searchCache.set(key, results);
-    return results;
+    return (await r.json()).results || [];
   } finally { clearTimeout(timer); }
+}
+
+let jsonpSeq = 0;
+function itunesJsonp(term) {
+  return new Promise((resolve, reject) => {
+    const cb = '__itunes_cb' + (++jsonpSeq);
+    const s = document.createElement('script');
+    const timer = setTimeout(() => { cleanup(); reject(new Error('JSONP 逾時')); }, 8000);
+    function cleanup() { delete window[cb]; s.remove(); clearTimeout(timer); }
+    window[cb] = data => { cleanup(); resolve(data.results || []); };
+    s.onerror = () => { cleanup(); reject(new Error('JSONP 也失敗')); };
+    s.src = itunesUrl(term) + '&callback=' + cb;
+    document.head.appendChild(s);
+  });
 }
 
 // ===== 連線層 =====
