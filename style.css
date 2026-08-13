@@ -28,6 +28,7 @@ body{
 header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:12px 16px;
   background:rgba(255,255,255,.08);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .logo{font-weight:900;font-size:18px;letter-spacing:1px}
+.ver{font-size:12px;opacity:.55;font-weight:700;letter-spacing:0}
 .chip{background:var(--accent);color:#4a2a00;font-weight:900;border-radius:999px;padding:4px 14px;letter-spacing:2px}
 .vol{margin-left:auto;display:flex;align-items:center;gap:6px}
 .vol input{width:90px;accent-color:var(--accent)}

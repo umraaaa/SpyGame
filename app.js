@@ -12,6 +12,8 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
+const VERSION = 'v7';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+$('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
 function toast(msg) {
@@ -309,10 +311,10 @@ function hostVote(pid, target) {
 function hostForceTally() {
   const r = H.round;
   if (r == null || r.stage !== 'vote') return;
-  doTally(r);
+  doTally(r, true); // 房主強制結算：不等未投的人，平票也直接判定不再重投
 }
 
-function doTally(r) {
+function doTally(r, forced) {
   const cands = candidateIds(r);
   const counts = {};
   for (const t of Object.values(r.votes)) counts[t] = (counts[t] || 0) + 1;
@@ -325,8 +327,8 @@ function doTally(r) {
   if (max === 0) tops = cands.slice(); // 沒人投 → 視為平票
 
   if (tops.length === 1) { applyKill(r, tops[0]); return; }
-  // 平票
-  if (r.revoting) { applyNoKill(r); return; }
+  // 平票：已經是重投、或房主強制結算 → 這輪不殺，不再回頭等投票
+  if (r.revoting || forced) { applyNoKill(r); return; }
   // Step: 最高票的人重新投一次
   r.revoting = true;
   r.candidateIds = tops;
