@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v8';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v9';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -89,18 +89,28 @@ audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); }
 // iOS Safari 的 fetch 常對 itunes 直接 "Load failed"（CORS / Private Relay），
 // 但 <script> JSONP 不受 CORS 限制。所以先試 fetch（桌面可用），失敗退回 JSONP（iOS 可用）。
 // 同關鍵字快取：重複搜尋 0 請求，降低 Apple 對共用 IP 的限流。
+// 若手機直連 itunes 失敗，照 PROXY設定.md 部署 Cloudflare Worker，把網址貼進來（結尾不用斜線/參數）
+const PROXY = ''; // 例：'https://itunes-proxy.你的名字.workers.dev'
+
 const searchCache = new Map();
 async function itunesSearch(term) {
   const key = term.trim().toLowerCase();
   if (searchCache.has(key)) return searchCache.get(key);
   let results;
-  try { results = await itunesFetch(term); }
-  catch (e) {
-    if (e.message === 'rate') throw e; // 明確被限流就別再用 JSONP 撞一次
-    results = await itunesJsonp(term);
+  try {
+    results = PROXY ? await proxyFetch(term) : await itunesFetch(term);
+  } catch (e) {
+    if (e.message === 'rate') throw e; // 明確被限流就別再撞一次
+    results = await itunesJsonp(term); // 最後手段
   }
   searchCache.set(key, results);
   return results;
+}
+
+async function proxyFetch(term) {
+  const r = await fetch(PROXY + '?term=' + encodeURIComponent(term) + '&_=' + Date.now(), { cache: 'no-store' });
+  if (r.ok === false) throw new Error('proxy ' + r.status);
+  return (await r.json()).results || [];
 }
 
 function itunesUrl(term) {
