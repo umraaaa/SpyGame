@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v16';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v14';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -86,39 +86,45 @@ audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); }
 audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
 // ===== iTunes 搜尋（JSONP）=====
-async function itunesSearch(term) {
-  // 1. 使用 no-cors 模式，這會讓 fetch 變成「隱身模式」
-  // 蘋果 API 不支援 CORS，但在 no-cors 下，瀏覽器會允許你發送請求
-  // 雖然無法讀取 body，但 JSONP 會幫我們接住資料
-  const url = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}`;
-  
+function itunesSearch(term) {
   return new Promise((resolve, reject) => {
-    // 建立 JSONP 的 callback 函數
-    const cb = 'jsonp_' + Date.now();
-    window[cb] = (data) => {
+
+    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const cb = 'itunes_cb_' + uniqueId;
+
+    const s = document.createElement('script');
+
+    // 設定 10 秒超時保護
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('搜尋超時，請重試'));
+    }, 10000);
+
+    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
+    function cleanup() {
       delete window[cb];
+      if (s.parentNode) s.remove();
+      clearTimeout(timer);
+    }
+
+    // 接收蘋果 API 回傳的資料
+    window[cb] = data => {
+      cleanup();
       resolve(data.results || []);
     };
 
-    // 建立 script 標籤 (這是唯一能拿到蘋果 API 資料的方法)
-    const s = document.createElement('script');
-    s.src = `${url}&callback=${cb}`;
-    
-    // 這是關鍵！對付 iOS：延遲載入，避開系統初期的攔截檢查
-    setTimeout(() => {
-      document.body.appendChild(s);
-    }, 50);
+    s.onerror = () => {
+      cleanup();
+      reject(new Error('載入失敗，請檢查網路'));
+    };
 
-    // 超時處理
-    setTimeout(() => {
-      if(window[cb]) {
-        delete window[cb];
-        s.remove();
-        reject(new Error('超時'));
-      }
-    }, 5000);
+    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
+
+    // 將 script 塞入畫面，觸發請求
+    document.body.appendChild(s);
   });
 }
+
 // ===== 連線層 =====
 let peer = null, hostConn = null, isHost = false, myId = null, myName = '';
 let roomCode = '';
