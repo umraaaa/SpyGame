@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v14';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v15';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -86,43 +86,42 @@ audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); }
 audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
 // ===== iTunes 搜尋（JSONP）=====
-function itunesSearch(term) {
-  return new Promise((resolve, reject) => {
+async function itunesSearch(term) {
+  // 1. 原始的蘋果 API 網址
+  const appleUrl = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}`;
+  
+  // 2. 包裝成極速代理網址（速度比 AllOrigins 快很多）
+  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(appleUrl)}`;
+  
+  const controller = new AbortController();
+  // 8秒超時保護
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, 8000);
 
-    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
-    const cb = 'itunes_cb_' + uniqueId;
-
-    const s = document.createElement('script');
-
-    // 設定 10 秒超時保護
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('搜尋超時，請重試'));
-    }, 10000);
-
-    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
-    function cleanup() {
-      delete window[cb];
-      if (s.parentNode) s.remove();
-      clearTimeout(timer);
+  try {
+    // 3. 直接用標準 fetch 呼叫，iOS 絕對不會攔截
+    const response = await fetch(proxyUrl, {
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    
+    clearTimeout(timer);
+    
+    if (!response.ok) {
+      throw new Error('代理伺服器無回應');
     }
 
-    // 接收蘋果 API 回傳的資料
-    window[cb] = data => {
-      cleanup();
-      resolve(data.results || []);
-    };
-
-    s.onerror = () => {
-      cleanup();
-      reject(new Error('載入失敗，請檢查網路'));
-    };
-
-    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
-
-    // 將 script 塞入畫面，觸發請求
-    document.body.appendChild(s);
-  });
+    // 4. 解析回傳資料
+    const data = await response.json();
+    return data.results || [];
+    
+  } catch (err) {
+    clearTimeout(timer);
+    console.error('搜尋失敗:', err);
+    // 故意拋出錯誤讓外層抓取，但不讓畫面死卡
+    throw new Error('搜尋連線失敗，請再試一次');
+  }
 }
 
 // ===== 連線層 =====
