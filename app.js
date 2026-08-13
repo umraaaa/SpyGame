@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v10';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v11';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -931,3 +931,28 @@ $('#btnJoin').onclick = () => {
   if (code.length !== 4) { toast('房號是 4 碼'); return; }
   joinRoom(name, code);
 };
+
+// ===== 臨時診斷（確認手機為何搜尋失敗，查完整段刪掉，不影響搜尋邏輯）=====
+async function runDiag() {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:rgba(0,0,0,.88);color:#fff;font-size:13px;line-height:1.8;padding:12px 14px;border-radius:14px;font-family:monospace;max-height:65vh;overflow:auto;white-space:pre-wrap;word-break:break-all';
+  document.body.appendChild(box);
+  const lines = [];
+  const render = () => { box.innerHTML = '🔧 診斷（把這幾行給我）\n' + lines.join('\n') + '\n\n（點這裡關閉）'; };
+  const add = (name, r) => { lines.push('• ' + name + '：' + r); render(); };
+  lines.push('版本 ' + VERSION); render();
+  box.onclick = () => box.remove();
+
+  // 1) 跨網域 script（遊戲用的 peerjs 從 unpkg 載入）
+  add('跨網域 script (peerjs)', typeof Peer === 'function' ? 'OK' : 'NG');
+  // 2) 非 apple 的 fetch 對照（github，有 CORS）
+  try { const r = await fetch('https://api.github.com/zen'); add('非apple fetch (github)', 'OK ' + r.status); }
+  catch (e) { add('非apple fetch (github)', 'FAIL ' + e.name + ':' + e.message); }
+  // 3) itunes fetch
+  try { const r = await fetch('https://itunes.apple.com/search?term=test&media=music&limit=1'); add('itunes fetch', 'OK ' + r.status); }
+  catch (e) { add('itunes fetch', 'FAIL ' + e.name + ':' + e.message); }
+  // 4) itunes jsonp
+  try { const d = await itunesJsonp('test'); add('itunes jsonp', 'OK ' + d.length + ' 筆'); }
+  catch (e) { add('itunes jsonp', 'FAIL ' + e.message); }
+}
+runDiag();
