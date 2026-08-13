@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v19';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v20';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -98,6 +98,13 @@ async function itunesSearch(term) {
     // 3. 定義 JSONP 回應處理函式 (掛在全域下)
     window[cb] = (data) => {
       cleanup();
+      // 增加除錯資訊，看看蘋果到底回了什麼給你
+      console.log("蘋果回傳資料:", data); 
+      
+      if (!data.results || data.results.length === 0) {
+        console.warn("搜尋結果為空，請檢查關鍵字");
+      }
+      
       resolve(data.results || []);
     };
 
