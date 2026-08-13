@@ -31,6 +31,9 @@ header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;
 .chip{background:var(--accent);color:#4a2a00;font-weight:900;border-radius:999px;padding:4px 14px;letter-spacing:2px}
 .vol{margin-left:auto;display:flex;align-items:center;gap:6px}
 .vol input{width:90px;accent-color:var(--accent)}
+.iconBtn{border:none;background:var(--glass2);color:var(--ink);border-radius:999px;width:38px;height:38px;font-size:16px;cursor:pointer}
+header .iconBtn{margin-left:auto}
+header .iconBtn+.vol{margin-left:8px}
 
 main{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:16px 14px 60px}
 
@@ -64,6 +67,14 @@ input::placeholder{color:#999}
 .home h1{font-size:34px}
 .home .sub{opacity:.85}
 .or{opacity:.6;font-size:13px}
+
+/* 開房設定 */
+.setup{display:flex;flex-direction:column;gap:10px}
+.setupRow{display:flex;align-items:center;gap:12px}
+.setupLabel{width:44px;text-align:left;font-weight:800;opacity:.9}
+.seg{flex:1;display:flex;gap:6px;background:rgba(255,255,255,.1);border-radius:999px;padding:4px}
+.segBtn{flex:1;border:none;border-radius:999px;padding:9px;font-size:14px;font-weight:800;cursor:pointer;background:transparent;color:var(--ink)}
+.segBtn.on{background:#fff;color:#7a2fb0}
 
 /* ===== 分頁 ===== */
 .tabs{display:flex;gap:8px;margin-bottom:14px}
@@ -102,8 +113,24 @@ h2{font-size:20px;margin-bottom:6px}
 /* ===== 舞台 ===== */
 .stageBig{text-align:center;padding:34px 18px}
 .stageBig .emoji{font-size:52px;display:block;margin-bottom:10px}
-.readyRow{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px dashed var(--line)}
+.readyRow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px dashed var(--line)}
 .readyRow:last-child{border-bottom:none}
+.readyRow.dead{opacity:.45}
+.readyRow.dead span:first-child{text-decoration:line-through}
+.readyRow .btn{flex-shrink:0}
+
+/* 投票候選按鈕 */
+.voteBtn{width:100%;text-align:left;margin-bottom:8px;background:var(--glass2);color:var(--ink);border:2px solid transparent}
+.voteBtn.mine{border-color:var(--ok);background:rgba(124,255,178,.22)}
+.roleBadge{display:inline-block;background:var(--glass2);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:800;margin-top:6px}
+.answerBox{display:flex;gap:10px;margin-top:8px}
+.answerBox>div{flex:1;background:rgba(255,255,255,.12);border-radius:14px;padding:10px;text-align:center;font-weight:700}
+.big-result{text-align:center;font-size:22px;font-weight:900;padding:8px 0}
+
+/* 題庫清單 */
+.qItem{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.1);border-radius:16px;padding:10px 12px;margin-bottom:8px}
+.qItem .qtxt{flex:1;min-width:0;font-size:14px;line-height:1.5}
+.qItem .qtxt b{color:var(--accent)}
 
 /* 播放中的等化器動畫 */
 .eq{display:inline-flex;gap:4px;align-items:flex-end;height:26px;margin-top:12px}

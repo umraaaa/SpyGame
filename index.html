@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>音樂臥底</title>
+<title>臥底遊戲</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕵️</text></svg>">
 <link rel="stylesheet" href="style.css">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
@@ -11,21 +12,30 @@
 <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
 
 <header>
-  <div class="logo">🎶 音樂臥底</div>
+  <div class="logo">🕵️ 臥底遊戲</div>
   <div id="roomChip" class="chip hidden"></div>
+  <button id="btnPause" class="iconBtn hidden">⏸️</button>
   <div class="vol">🔊<input id="vol" type="range" min="0" max="1" step="0.01" value="1"></div>
 </header>
 
 <main>
   <!-- 首頁：開房 / 加入 -->
   <section id="scrHome" class="card home">
-    <h1>🎧 音樂臥底</h1>
-    <p class="sub">找出唱不一樣歌的那個人</p>
+    <h1>🕵️ 臥底遊戲</h1>
+    <p class="sub">找出拿到不一樣題目的那個人</p>
     <input id="inName" maxlength="12" placeholder="你的暱稱">
-    <div class="row modeSel">
-      <button id="modeSong" class="tab on">🎵 歌曲臥底</button>
-      <button id="modeWord" class="tab">✏️ 單詞臥底</button>
+
+    <div class="setup">
+      <div class="setupRow">
+        <span class="setupLabel">內容</span>
+        <div class="seg"><button id="modeSong" class="segBtn on">🎵 歌曲</button><button id="modeWord" class="segBtn">✏️ 單詞</button></div>
+      </div>
+      <div class="setupRow">
+        <span class="setupLabel">表決</span>
+        <div class="seg"><button id="voteMulti" class="segBtn on">🔁 多次</button><button id="voteSingle" class="segBtn">1️⃣ 單次</button></div>
+      </div>
     </div>
+
     <button id="btnCreate" class="btn big">🎉 開新房間</button>
     <div class="or">－ 或 －</div>
     <div class="row">
@@ -37,8 +47,8 @@
   <!-- 遊戲主畫面 -->
   <section id="scrGame" class="hidden">
     <nav class="tabs">
-      <button id="tabStage" class="tab on">🎤 現場</button>
-      <button id="tabSong" class="tab">🎼 點歌</button>
+      <button id="tabStage" class="tab on">🎮 遊戲</button>
+      <button id="tabSong" class="tab">📝 題庫</button>
     </nav>
     <div id="viewStage"></div>
     <div id="viewSong" class="hidden">
@@ -47,7 +57,8 @@
         <div class="card panel" id="panelCiv" data-side="civ"><h3></h3><div class="pBody"></div></div>
         <div class="card panel" id="panelSpy" data-side="spy"><h3></h3><div class="pBody"></div></div>
       </div>
-      <button id="btnSavePair" class="btn big">💾 送出題目</button>
+      <button id="btnAddPair" class="btn big">➕ 加入題庫</button>
+      <div class="card"><h2>📝 我的題庫</h2><div id="queueList"><p class="dim">還沒有題目，上面編好一組後按「加入題庫」。</p></div></div>
     </div>
   </section>
 </main>
