@@ -64,20 +64,26 @@ function updatePauseBtn() { btnPause.textContent = audio.paused ? '▶️' : '�
 audio.addEventListener('play', updatePauseBtn);
 audio.addEventListener('pause', updatePauseBtn);
 
-// ===== iTunes 搜尋（JSONP，在自己裝置上執行）=====
-let jsonpSeq = 0;
-function itunesSearch(term) {
-  return new Promise((resolve, reject) => {
-    const cb = '__itunes_cb' + (++jsonpSeq);
-    const s = document.createElement('script');
-    const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 10000);
-    function cleanup() { delete window[cb]; s.remove(); clearTimeout(timer); }
-    window[cb] = data => { cleanup(); resolve(data.results || []); };
-    s.onerror = () => { cleanup(); reject(new Error('load failed')); };
-    s.src = 'https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW'
-        + '&term=' + encodeURIComponent(term) + '&callback=' + cb;
-    document.head.appendChild(s);
-  });
+// ===== iTunes 搜尋（fetch + CORS，在自己裝置上執行）=====
+// 改用 fetch（iTunes 支援 CORS）而非 JSONP：避免手機防追蹤機制擋 script 注入。
+// 同關鍵字快取，重複搜尋不再打 API，順便降低 Apple 對共用 IP 的限流。
+const searchCache = new Map();
+async function itunesSearch(term) {
+  const key = term.trim().toLowerCase();
+  if (searchCache.has(key)) return searchCache.get(key);
+  // _=時間戳：保險，擋掉會無視 no-store、只認網址的中間層代理快取
+  const url = 'https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term='
+      + encodeURIComponent(term) + '&_=' + Date.now();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+    if (r.status === 403 || r.status === 429) throw new Error('rate'); // 被限流
+    if (r.ok === false) throw new Error('http ' + r.status);
+    const results = (await r.json()).results || [];
+    searchCache.set(key, results);
+    return results;
+  } finally { clearTimeout(timer); }
 }
 
 // ===== 連線層 =====
@@ -194,8 +200,9 @@ function hostStartRound() {
   const pair = H.queues[setter.id].shift();
 
   // Step 2: 分角色——7 成參與者、3 成投票者，出題者固定在投票者
+  // 上限壓成 N-2，保證至少 2 個投票者（出題者 + 至少 1 個能投的），小人數才玩得動
   const N = ps.length;
-  const nPart = Math.ceil(N * 0.7);
+  const nPart = Math.min(Math.ceil(N * 0.7), N - 2);
   const others = shuffle(ps.filter(p => p.id !== setter.id));
   const partPlayers = others.slice(0, nPart);
   const voterPlayers = [setter, ...others.slice(nPart)];
@@ -758,7 +765,11 @@ function ensurePanels(mode) {
       if (term === '') return;
       el.querySelector('.pResults').innerHTML = '<p class="dim">搜尋中…</p>';
       try { renderResults(el, side, await itunesSearch(term)); }
-      catch { el.querySelector('.pResults').innerHTML = '<p class="dim">搜尋失敗，再試一次</p>'; }
+      catch (e) {
+        el.querySelector('.pResults').innerHTML = e.message === 'rate'
+          ? '<p class="dim">查詢太頻繁被 Apple 暫時擋下，等幾秒再按搜尋。</p>'
+          : '<p class="dim">搜尋失敗，再按一次搜尋。</p>';
+      }
     };
     el.querySelector('.pGo').onclick = doSearch;
     el.querySelector('.pSearch').onkeydown = e => { if (e.key === 'Enter') doSearch(); };
