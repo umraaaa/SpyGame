@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>音樂臥底</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+<header>
+  <div class="logo">🎶 音樂臥底</div>
+  <div id="roomChip" class="chip hidden"></div>
+  <div class="vol">🔊<input id="vol" type="range" min="0" max="1" step="0.01" value="1"></div>
+</header>
+
+<main>
+  <!-- 首頁：開房 / 加入 -->
+  <section id="scrHome" class="card home">
+    <h1>🎧 音樂臥底</h1>
+    <p class="sub">找出唱不一樣歌的那個人</p>
+    <input id="inName" maxlength="12" placeholder="你的暱稱">
+    <div class="row modeSel">
+      <button id="modeSong" class="tab on">🎵 歌曲臥底</button>
+      <button id="modeWord" class="tab">✏️ 單詞臥底</button>
+    </div>
+    <button id="btnCreate" class="btn big">🎉 開新房間</button>
+    <div class="or">－ 或 －</div>
+    <div class="row">
+      <input id="inCode" maxlength="4" placeholder="房號" style="text-transform:uppercase">
+      <button id="btnJoin" class="btn">加入</button>
+    </div>
+  </section>
+
+  <!-- 遊戲主畫面 -->
+  <section id="scrGame" class="hidden">
+    <nav class="tabs">
+      <button id="tabStage" class="tab on">🎤 現場</button>
+      <button id="tabSong" class="tab">🎼 點歌</button>
+    </nav>
+    <div id="viewStage"></div>
+    <div id="viewSong" class="hidden">
+      <div class="card tipCard" id="tipCard"></div>
+      <div class="panels">
+        <div class="card panel" id="panelCiv" data-side="civ"><h3></h3><div class="pBody"></div></div>
+        <div class="card panel" id="panelSpy" data-side="spy"><h3></h3><div class="pBody"></div></div>
+      </div>
+      <button id="btnSavePair" class="btn big">💾 送出題目</button>
+    </div>
+  </section>
+</main>
+
+<!-- 倒數遮罩 -->
+<div id="countOverlay" class="hidden"><div id="countNum">3</div></div>
+
+<!-- 確認視窗 -->
+<div id="modal" class="hidden">
+  <div class="card modalBox">
+    <p id="modalText"></p>
+    <div class="row end">
+      <button id="modalCancel" class="btn ghost">取消</button>
+      <button id="modalOk" class="btn">確定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
