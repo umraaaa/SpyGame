@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v9';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v10';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -118,15 +118,16 @@ function itunesUrl(term) {
     + encodeURIComponent(term) + '&_=' + Date.now();
 }
 
+// iOS Safari 對 fetch 加 cache:'no-store' 或 AbortController 會偶發 "Load failed"，
+// 所以這裡用最陽春的 fetch，只靠網址上的 _=時間戳 防快取，逾時改用 Promise.race。
 async function itunesFetch(term) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
-  try {
-    const r = await fetch(itunesUrl(term), { cache: 'no-store', signal: ctrl.signal });
-    if (r.status === 403 || r.status === 429) throw new Error('rate');
-    if (r.ok === false) throw new Error('http ' + r.status);
-    return (await r.json()).results || [];
-  } finally { clearTimeout(timer); }
+  const r = await Promise.race([
+    fetch(itunesUrl(term)),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+  ]);
+  if (r.status === 403 || r.status === 429) throw new Error('rate');
+  if (r.ok === false) throw new Error('http ' + r.status);
+  return (await r.json()).results || [];
 }
 
 let jsonpSeq = 0;
