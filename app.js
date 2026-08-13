@@ -585,13 +585,15 @@ function renderBetween(s) {
   const totalPairs = ps.reduce((a, p) => a + p.queueLen, 0);
   const canStart = ps.length >= s.minPlayers && withPairs.length > 0;
   v.innerHTML = `
-    <div class="card stageBig">
-      <span class="emoji">🎲</span>
-      <h2>準備開始回合</h2>
-      <p class="dim">目前 <b>${ps.length}</b> 人（最少 ${s.minPlayers} 人）<br>題庫共 <b>${totalPairs}</b> 題。到「📝 題庫」加題，可一直累積、每回合消一題。</p>
+    <div class="card">
+      <h2>🎲 準備開始回合</h2>
+      <p class="dim">目前 <b>${ps.length}</b> 人（最少 ${s.minPlayers} 人）｜題庫共 <b>${totalPairs}</b> 題<br>把房號 <b>${esc(s.code)}</b> 給朋友加入；到「📝 題庫」加題，每回合自動消一題。</p>
+      <div class="pList">${s.players.map(p =>
+        `<span class="pTag ${p.connected ? '' : 'off'}">${p.isHost ? '👑' : ''}${esc(p.name)}<span class="badge">${p.queueLen > 0 ? '📝' + p.queueLen : ''}</span></span>`).join('')}
+      </div>
     </div>
     ${s.isHost ? `<button id="btnStartRound" class="btn big" ${canStart ? '' : 'disabled'}>🎬 開始本回合</button>
-      ${canStart ? '' : `<p class="dim" style="text-align:center;margin-top:8px">${ps.length < s.minPlayers ? '人數不足' : '題庫還是空的'}</p>`}` : ''}
+      ${canStart ? '' : `<p class="dim" style="text-align:center;margin-top:8px">${ps.length < s.minPlayers ? '等更多人加入…' : '題庫還是空的，先去加題'}</p>`}` : `<p class="dim" style="text-align:center;margin-top:8px">等房主開始本回合…</p>`}
   `;
   if (s.isHost) { const b = $('#btnStartRound'); if (b) b.onclick = hostStartRound; }
 }

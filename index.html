@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>臥底遊戲</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕵️</text></svg>">
-<link rel="stylesheet" href="style.css">
+<style>/* 關鍵樣式，避免載入 CSS 前的白閃 */
+  body{margin:0;color:#fff;background:linear-gradient(140deg,#5b2ba8,#8b3fd6 30%,#d64f9e 65%,#f2784b);background-attachment:fixed;font-family:system-ui,sans-serif}
+</style>
+<script>
+  // cache-bust：每次都抓最新的樣式與程式，避免不同裝置卡在舊版本看到不一樣的畫面
+  var _v = '?v=' + Date.now();
+  document.write('<link rel="stylesheet" href="style.css' + _v + '">');
+</script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
@@ -26,13 +33,19 @@
     <input id="inName" maxlength="12" placeholder="你的暱稱">
 
     <div class="setup">
-      <div class="setupRow">
-        <span class="setupLabel">內容</span>
-        <div class="seg"><button id="modeSong" class="segBtn on">🎵 歌曲</button><button id="modeWord" class="segBtn">✏️ 單詞</button></div>
+      <div class="segGroup">
+        <div class="segCap">內容</div>
+        <div class="seg">
+          <button id="modeSong" class="segBtn on">🎵 歌曲</button>
+          <button id="modeWord" class="segBtn">✏️ 單詞</button>
+        </div>
       </div>
-      <div class="setupRow">
-        <span class="setupLabel">表決</span>
-        <div class="seg"><button id="voteMulti" class="segBtn on">🔁 多次</button><button id="voteSingle" class="segBtn">1️⃣ 單次</button></div>
+      <div class="segGroup">
+        <div class="segCap">表決方式</div>
+        <div class="seg">
+          <button id="voteMulti" class="segBtn on">🔁 多次投票</button>
+          <button id="voteSingle" class="segBtn">1️⃣ 單次投票</button>
+        </div>
       </div>
     </div>
 
@@ -78,6 +91,6 @@
 </div>
 
 <div id="toast" class="hidden"></div>
-<script src="app.js"></script>
+<script>document.write('<scr' + 'ipt src="app.js' + _v + '"></scr' + 'ipt>');</script>
 </body>
 </html>

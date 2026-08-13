@@ -68,13 +68,14 @@ input::placeholder{color:#999}
 .home .sub{opacity:.85}
 .or{opacity:.6;font-size:13px}
 
-/* 開房設定 */
-.setup{display:flex;flex-direction:column;gap:10px}
-.setupRow{display:flex;align-items:center;gap:12px}
-.setupLabel{width:44px;text-align:left;font-weight:800;opacity:.9}
-.seg{flex:1;display:flex;gap:6px;background:rgba(255,255,255,.1);border-radius:999px;padding:4px}
-.segBtn{flex:1;border:none;border-radius:999px;padding:9px;font-size:14px;font-weight:800;cursor:pointer;background:transparent;color:var(--ink)}
-.segBtn.on{background:#fff;color:#7a2fb0}
+/* 開房設定：現代分段式切換 */
+.setup{display:flex;flex-direction:column;gap:14px;text-align:left}
+.segGroup{display:flex;flex-direction:column;gap:6px}
+.segCap{font-size:13px;font-weight:800;opacity:.8;padding-left:6px}
+.seg{display:flex;gap:6px;background:rgba(255,255,255,.12);border-radius:16px;padding:5px}
+.segBtn{flex:1;border:none;border-radius:12px;padding:12px 8px;font-size:15px;font-weight:800;cursor:pointer;background:transparent;color:var(--ink);transition:transform .1s,background .15s}
+.segBtn.on{background:#fff;color:#7a2fb0;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.segBtn:active{transform:scale(.96)}
 
 /* ===== 分頁 ===== */
 .tabs{display:flex;gap:8px;margin-bottom:14px}
