@@ -87,41 +87,50 @@ audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); }
 
 // ===== iTunes 搜尋（JSONP）=====
 function itunesSearch(term) {
-  return new Promise((resolve, reject) => {
-
-    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
-    const cb = 'itunes_cb_' + uniqueId;
-
-    const s = document.createElement('script');
-
-    // 設定 10 秒超時保護
+  return new Promise(async (resolve, reject) => {
+    // 1. 我們真正要抓的蘋果 API 網址
+    const appleUrl = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}`;
+    
+    // 2. 把蘋果網址包裝給 AllOrigins 閘道，加上時間戳防快取
+    // 使用 encodeURIComponent 確保網址格式不會亂掉
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(appleUrl)}&_t=${Date.now()}`;
+    
+    const controller = new AbortController();
+    // 設定 8 秒超時保護
     const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('搜尋超時，請重試'));
-    }, 10000);
+      controller.abort();
+      reject(new Error('搜尋超時，請檢查網路'));
+    }, 8000);
 
-    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
-    function cleanup() {
-      delete window[cb];
-      if (s.parentNode) s.remove();
+    try {
+      // 3. 透過 fetch 呼叫閘道，因為有合法的 CORS 標頭，瀏覽器絕對不會擋
+      const response = await fetch(proxyUrl, {
+        signal: controller.signal,
+        cache: 'no-store' // 徹底禁止瀏覽器快取
+      });
+      
       clearTimeout(timer);
+      
+      if (!response.ok) {
+        throw new Error('閘道伺服器無回應');
+      }
+
+      // 4. 解析閘道回傳的資料
+      const proxyData = await response.json();
+      
+      // AllOrigins 會把真正的蘋果回傳資料，以「字串」形式包在 proxyData.contents 裡面
+      if (proxyData.contents) {
+        const appleData = JSON.parse(proxyData.contents);
+        resolve(appleData.results || []);
+      } else {
+        resolve([]);
+      }
+      
+    } catch (err) {
+      clearTimeout(timer);
+      console.error(err);
+      reject(new Error('搜尋失敗，請再試一次'));
     }
-
-    // 接收蘋果 API 回傳的資料
-    window[cb] = data => {
-      cleanup();
-      resolve(data.results || []);
-    };
-
-    s.onerror = () => {
-      cleanup();
-      reject(new Error('載入失敗，請檢查網路'));
-    };
-
-    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
-
-    // 將 script 塞入畫面，觸發請求
-    document.body.appendChild(s);
   });
 }
 
