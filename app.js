@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v14';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v18';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -88,40 +88,37 @@ audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); }
 // ===== iTunes 搜尋（JSONP）=====
 function itunesSearch(term) {
   return new Promise((resolve, reject) => {
-
-    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
-    const cb = 'itunes_cb_' + uniqueId;
-
-    const s = document.createElement('script');
-
-    // 設定 10 秒超時保護
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('搜尋超時，請重試'));
-    }, 10000);
-
-    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
-    function cleanup() {
-      delete window[cb];
-      if (s.parentNode) s.remove();
-      clearTimeout(timer);
-    }
-
-    // 接收蘋果 API 回傳的資料
-    window[cb] = data => {
+    // 1. 生成乾淨的 Callback 變數名 (確保只有英文字母)
+    const cb = 'itunes' + Date.now().toString(36);
+    
+    // 2. 移除所有不必要的參數（如 _bust 等），只留蘋果官方最喜歡的參數
+    // 這是最「正規」的網址，蘋果伺服器最喜歡這種格式
+    const url = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}`;
+    
+    // 3. 處理 Callback：當腳本載入並執行時，會自動呼叫這個函式
+    window[cb] = (data) => {
       cleanup();
       resolve(data.results || []);
     };
-
+    
+    // 4. 使用純淨的 DOM 操作
+    const s = document.createElement('script');
+    s.src = url;
+    
+    // 5. 加入頁面觸發請求
+    document.body.appendChild(s);
+    
+    // 6. 清理機制
+    function cleanup() {
+      delete window[cb];
+      if (s.parentNode) s.removeChild(s);
+    }
+    
+    // 7. 錯誤處理
     s.onerror = () => {
       cleanup();
-      reject(new Error('載入失敗，請檢查網路'));
+      reject(new Error('連線請求失敗'));
     };
-
-    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
-
-    // 將 script 塞入畫面，觸發請求
-    document.body.appendChild(s);
   });
 }
 
