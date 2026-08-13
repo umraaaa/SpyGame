@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v11';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v14';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -85,62 +85,43 @@ audio.addEventListener('play', () => { updatePauseBtn(); updatePreviewBtns(); })
 audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); });
 audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
-// ===== iTunes 搜尋 =====
-// iOS Safari 的 fetch 常對 itunes 直接 "Load failed"（CORS / Private Relay），
-// 但 <script> JSONP 不受 CORS 限制。所以先試 fetch（桌面可用），失敗退回 JSONP（iOS 可用）。
-// 同關鍵字快取：重複搜尋 0 請求，降低 Apple 對共用 IP 的限流。
-// 若手機直連 itunes 失敗，照 PROXY設定.md 部署 Cloudflare Worker，把網址貼進來（結尾不用斜線/參數）
-const PROXY = ''; // 例：'https://itunes-proxy.你的名字.workers.dev'
-
-const searchCache = new Map();
-async function itunesSearch(term) {
-  const key = term.trim().toLowerCase();
-  if (searchCache.has(key)) return searchCache.get(key);
-  let results;
-  try {
-    results = PROXY ? await proxyFetch(term) : await itunesFetch(term);
-  } catch (e) {
-    if (e.message === 'rate') throw e; // 明確被限流就別再撞一次
-    results = await itunesJsonp(term); // 最後手段
-  }
-  searchCache.set(key, results);
-  return results;
-}
-
-async function proxyFetch(term) {
-  const r = await fetch(PROXY + '?term=' + encodeURIComponent(term) + '&_=' + Date.now(), { cache: 'no-store' });
-  if (r.ok === false) throw new Error('proxy ' + r.status);
-  return (await r.json()).results || [];
-}
-
-function itunesUrl(term) {
-  return 'https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term='
-    + encodeURIComponent(term) + '&_=' + Date.now();
-}
-
-// iOS Safari 對 fetch 加 cache:'no-store' 或 AbortController 會偶發 "Load failed"，
-// 所以這裡用最陽春的 fetch，只靠網址上的 _=時間戳 防快取，逾時改用 Promise.race。
-async function itunesFetch(term) {
-  const r = await Promise.race([
-    fetch(itunesUrl(term)),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
-  ]);
-  if (r.status === 403 || r.status === 429) throw new Error('rate');
-  if (r.ok === false) throw new Error('http ' + r.status);
-  return (await r.json()).results || [];
-}
-
-let jsonpSeq = 0;
-function itunesJsonp(term) {
+// ===== iTunes 搜尋（JSONP）=====
+function itunesSearch(term) {
   return new Promise((resolve, reject) => {
-    const cb = '__itunes_cb' + (++jsonpSeq);
+
+    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const cb = 'itunes_cb_' + uniqueId;
+
     const s = document.createElement('script');
-    const timer = setTimeout(() => { cleanup(); reject(new Error('JSONP 逾時')); }, 8000);
-    function cleanup() { delete window[cb]; s.remove(); clearTimeout(timer); }
-    window[cb] = data => { cleanup(); resolve(data.results || []); };
-    s.onerror = () => { cleanup(); reject(new Error('JSONP 也失敗')); };
-    s.src = itunesUrl(term) + '&callback=' + cb;
-    document.head.appendChild(s);
+
+    // 設定 10 秒超時保護
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('搜尋超時，請重試'));
+    }, 10000);
+
+    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
+    function cleanup() {
+      delete window[cb];
+      if (s.parentNode) s.remove();
+      clearTimeout(timer);
+    }
+
+    // 接收蘋果 API 回傳的資料
+    window[cb] = data => {
+      cleanup();
+      resolve(data.results || []);
+    };
+
+    s.onerror = () => {
+      cleanup();
+      reject(new Error('載入失敗，請檢查網路'));
+    };
+
+    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
+
+    // 將 script 塞入畫面，觸發請求
+    document.body.appendChild(s);
   });
 }
 
@@ -931,28 +912,3 @@ $('#btnJoin').onclick = () => {
   if (code.length !== 4) { toast('房號是 4 碼'); return; }
   joinRoom(name, code);
 };
-
-// ===== 臨時診斷（確認手機為何搜尋失敗，查完整段刪掉，不影響搜尋邏輯）=====
-async function runDiag() {
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:rgba(0,0,0,.88);color:#fff;font-size:13px;line-height:1.8;padding:12px 14px;border-radius:14px;font-family:monospace;max-height:65vh;overflow:auto;white-space:pre-wrap;word-break:break-all';
-  document.body.appendChild(box);
-  const lines = [];
-  const render = () => { box.innerHTML = '🔧 診斷（把這幾行給我）\n' + lines.join('\n') + '\n\n（點這裡關閉）'; };
-  const add = (name, r) => { lines.push('• ' + name + '：' + r); render(); };
-  lines.push('版本 ' + VERSION); render();
-  box.onclick = () => box.remove();
-
-  // 1) 跨網域 script（遊戲用的 peerjs 從 unpkg 載入）
-  add('跨網域 script (peerjs)', typeof Peer === 'function' ? 'OK' : 'NG');
-  // 2) 非 apple 的 fetch 對照（github，有 CORS）
-  try { const r = await fetch('https://api.github.com/zen'); add('非apple fetch (github)', 'OK ' + r.status); }
-  catch (e) { add('非apple fetch (github)', 'FAIL ' + e.name + ':' + e.message); }
-  // 3) itunes fetch
-  try { const r = await fetch('https://itunes.apple.com/search?term=test&media=music&limit=1'); add('itunes fetch', 'OK ' + r.status); }
-  catch (e) { add('itunes fetch', 'FAIL ' + e.name + ':' + e.message); }
-  // 4) itunes jsonp
-  try { const d = await itunesJsonp('test'); add('itunes jsonp', 'OK ' + d.length + ' 筆'); }
-  catch (e) { add('itunes jsonp', 'FAIL ' + e.message); }
-}
-runDiag();
