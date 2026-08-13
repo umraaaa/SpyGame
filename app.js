@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v14';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v19';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -86,41 +86,52 @@ audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); }
 audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
 // ===== iTunes 搜尋（JSONP）=====
-function itunesSearch(term) {
+// ===== iTunes 搜尋（iOS 最終對策：Blob 注入版） =====
+async function itunesSearch(term) {
   return new Promise((resolve, reject) => {
+    // 1. 生成唯一識別碼
+    const cb = 'jsonp_' + Date.now() + Math.floor(Math.random() * 1000);
+    
+    // 2. 為了 iOS 做的「乾淨請求」：去除所有無關緊要的參數
+    const targetUrl = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}`;
 
-    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
-    const cb = 'itunes_cb_' + uniqueId;
-
-    const s = document.createElement('script');
-
-    // 設定 10 秒超時保護
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('搜尋超時，請重試'));
-    }, 10000);
-
-    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
-    function cleanup() {
-      delete window[cb];
-      if (s.parentNode) s.remove();
-      clearTimeout(timer);
-    }
-
-    // 接收蘋果 API 回傳的資料
-    window[cb] = data => {
+    // 3. 定義 JSONP 回應處理函式 (掛在全域下)
+    window[cb] = (data) => {
       cleanup();
       resolve(data.results || []);
     };
 
-    s.onerror = () => {
+    // 4. 設定 5 秒超時，避免卡死
+    const timer = setTimeout(() => {
       cleanup();
-      reject(new Error('載入失敗，請檢查網路'));
-    };
+      reject(new Error('搜尋超時'));
+    }, 5000);
 
-    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[cb];
+      // 移除動態產生的腳本與 Blob
+      const scripts = document.querySelectorAll('script[src^="blob:"]');
+      scripts.forEach(s => s.remove());
+    }
 
-    // 將 script 塞入畫面，觸發請求
+    // 5. Blob 注入核心：將 JSONP 載入邏輯封裝，規避 iOS 的靜態 URL 檢查
+    const scriptContent = `
+      (function() {
+        const s = document.createElement('script');
+        s.src = '${targetUrl}';
+        s.onerror = () => { window['${cb}']({results: []}); };
+        document.body.appendChild(s);
+      })();
+    `;
+
+    // 6. 建立 Blob 並轉為 URL
+    const blob = new Blob([scriptContent], { type: 'text/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    // 7. 載入並執行該 Blob
+    const s = document.createElement('script');
+    s.src = blobUrl;
     document.body.appendChild(s);
   });
 }
