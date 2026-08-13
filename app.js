@@ -53,21 +53,14 @@ function playUrl(url, onEnd) {
 }
 function stopAudio() { audio.onended = null; audio.pause(); }
 
-$('#vol').oninput = e => { audio.volume = +e.target.value; localStorage.setItem('mspyVol', e.target.value); updateMuteBtn(); };
+$('#vol').oninput = e => { audio.volume = +e.target.value; audio.muted = false; localStorage.setItem('mspyVol', e.target.value); updateMuteBtn(); };
 audio.volume = +(localStorage.getItem('mspyVol') ?? 1);
 $('#vol').value = audio.volume;
 
-// 點喇叭圖示 = 靜音 / 取消靜音（記住靜音前的音量）
+// 點喇叭圖示 = 靜音 / 取消靜音。用 audio.muted（iOS 不讓程式改 volume，但 muted 有效）
 const btnMute = $('#btnMute');
-let lastVol = audio.volume > 0 ? audio.volume : 1;
-btnMute.onclick = () => {
-  if (audio.volume > 0) { lastVol = audio.volume; audio.volume = 0; }
-  else audio.volume = lastVol || 1;
-  $('#vol').value = audio.volume;
-  localStorage.setItem('mspyVol', audio.volume);
-  updateMuteBtn();
-};
-function updateMuteBtn() { btnMute.textContent = audio.volume === 0 ? '🔇' : '🔊'; }
+btnMute.onclick = () => { audio.muted = audio.muted === false; updateMuteBtn(); };
+function updateMuteBtn() { btnMute.textContent = audio.muted ? '🔇' : '🔊'; }
 updateMuteBtn();
 
 // 暫停 / 繼續（涵蓋自己的歌與複盤，因為只有一個 Audio）
@@ -792,9 +785,10 @@ function ensurePanels(mode) {
       el.querySelector('.pResults').innerHTML = '<p class="dim">搜尋中…</p>';
       try { renderResults(el, side, await itunesSearch(term)); }
       catch (e) {
-        el.querySelector('.pResults').innerHTML = e.message === 'rate'
-          ? '<p class="dim">查詢太頻繁被 Apple 暫時擋下，等幾秒再按搜尋。</p>'
-          : '<p class="dim">搜尋失敗，再按一次搜尋。</p>';
+        const why = e.message === 'rate' ? '被 Apple 限流'
+          : e.name === 'AbortError' ? '連線逾時（10 秒）'
+          : (e.message || e.name || '未知錯誤');
+        el.querySelector('.pResults').innerHTML = `<p class="dim">搜尋失敗（${esc(why)}），等幾秒再按一次搜尋。</p>`;
       }
     };
     el.querySelector('.pGo').onclick = doSearch;
