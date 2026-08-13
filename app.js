@@ -87,35 +87,38 @@ audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); }
 
 // ===== iTunes 搜尋（JSONP）=====
 async function itunesSearch(term) {
-  // 👉 把這裡換成你剛剛在 Cloudflare 拿到的網址
-  const workerUrl = `https://spygame.howang0.workers.dev/?term=${encodeURIComponent(term)}`;
+  // 1. 使用 no-cors 模式，這會讓 fetch 變成「隱身模式」
+  // 蘋果 API 不支援 CORS，但在 no-cors 下，瀏覽器會允許你發送請求
+  // 雖然無法讀取 body，但 JSONP 會幫我們接住資料
+  const url = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}`;
   
-  const controller = new AbortController();
-  // 8秒超時保護
-  const timer = setTimeout(() => controller.abort(), 8000);
+  return new Promise((resolve, reject) => {
+    // 建立 JSONP 的 callback 函數
+    const cb = 'jsonp_' + Date.now();
+    window[cb] = (data) => {
+      delete window[cb];
+      resolve(data.results || []);
+    };
 
-  try {
-    // 直接用最標準的 fetch，乾淨俐落
-    const response = await fetch(workerUrl, {
-      signal: controller.signal
-    });
+    // 建立 script 標籤 (這是唯一能拿到蘋果 API 資料的方法)
+    const s = document.createElement('script');
+    s.src = `${url}&callback=${cb}`;
     
-    clearTimeout(timer);
-    
-    if (!response.ok) {
-      throw new Error('專屬 API 伺服器無回應');
-    }
+    // 這是關鍵！對付 iOS：延遲載入，避開系統初期的攔截檢查
+    setTimeout(() => {
+      document.body.appendChild(s);
+    }, 50);
 
-    const data = await response.json();
-    return data.results || [];
-    
-  } catch (err) {
-    clearTimeout(timer);
-    console.error('搜尋失敗:', err);
-    throw new Error('搜尋連線失敗，請再試一次');
-  }
+    // 超時處理
+    setTimeout(() => {
+      if(window[cb]) {
+        delete window[cb];
+        s.remove();
+        reject(new Error('超時'));
+      }
+    }, 5000);
+  });
 }
-
 // ===== 連線層 =====
 let peer = null, hostConn = null, isHost = false, myId = null, myName = '';
 let roomCode = '';
