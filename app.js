@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v15';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v14';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -85,42 +85,42 @@ audio.addEventListener('play', () => { updatePauseBtn(); updatePreviewBtns(); })
 audio.addEventListener('pause', () => { updatePauseBtn(); updatePreviewBtns(); });
 audio.addEventListener('ended', () => { updatePauseBtn(); updatePreviewBtns(); });
 
-let jsonpSeq = 0;
-
+// ===== iTunes 搜尋（JSONP）=====
 function itunesSearch(term) {
   return new Promise((resolve, reject) => {
-    jsonpSeq++;
-    const cb = 'itunescb' + Date.now() + jsonpSeq;
+
+    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const cb = 'itunes_cb_' + uniqueId;
+
     const s = document.createElement('script');
-    
-    // 💡 核心殺手鐧：強迫瀏覽器不送出 Referer！
-    // 讓蘋果伺服器以為這是一般使用者直接在網址列輸入的請求
-    s.referrerPolicy = 'no-referrer';
-    
-    const timer = setTimeout(() => { 
-      cleanup(); 
-      reject(new Error('搜尋超時，請再試一次')); 
-    }, 8000);
-    
-    function cleanup() { 
-      delete window[cb]; 
-      if (s.parentNode) s.remove(); 
-      clearTimeout(timer); 
+
+    // 設定 10 秒超時保護
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('搜尋超時，請重試'));
+    }, 10000);
+
+    // 執行完畢或失敗後的清理動作，確保 DOM 不會殘留垃圾
+    function cleanup() {
+      delete window[cb];
+      if (s.parentNode) s.remove();
+      clearTimeout(timer);
     }
-    
-    window[cb] = data => { 
-      cleanup(); 
-      resolve(data.results || []); 
+
+    // 接收蘋果 API 回傳的資料
+    window[cb] = data => {
+      cleanup();
+      resolve(data.results || []);
     };
-    
-    s.onerror = () => { 
-      cleanup(); 
-      reject(new Error('連線被阻擋')); 
+
+    s.onerror = () => {
+      cleanup();
+      reject(new Error('載入失敗，請檢查網路'));
     };
-    
-    const safeTerm = encodeURIComponent(term).replace(/%20/g, '+');
-    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${safeTerm}&callback=${cb}`;
-    
+
+    s.src = `https://itunes.apple.com/search?media=music&entity=song&limit=8&country=TW&term=${encodeURIComponent(term)}&callback=${cb}&_bust=${uniqueId}`;
+
+    // 將 script 塞入畫面，觸發請求
     document.body.appendChild(s);
   });
 }
