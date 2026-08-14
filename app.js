@@ -12,7 +12,7 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v22';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v23';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
 
 let toastTimer = null;
@@ -807,7 +807,7 @@ function ensurePanels(mode) {
   $('#tabSong').textContent = '📝 題庫';
   $('#tipCard').innerHTML = mode === 'word'
     ? '兩邊各填一個有關聯的詞（平民 / 臥底），不能一樣。按「加入題庫」可累積多題，之後每回合自動消一題。'
-    : '兩邊各選一首互相有關的歌（平民 / 臥底），不能同一首。按「加入題庫」可累積多題，之後每回合自動消一題。';
+    : '兩邊各選一首互相有關的歌（平民 / 臥底），不能同一首。搜尋來源可切 iTunes 或 YouTube。按「加入題庫」可累積多題，之後每回合自動消一題。';
   for (const el of document.querySelectorAll('.panel')) {
     const side = el.dataset.side;
     el.querySelector('h3').textContent = (side === 'civ' ? '😇 平民的' : '🕵️ 臥底的') + (mode === 'word' ? '詞' : '歌');
@@ -818,20 +818,33 @@ function ensurePanels(mode) {
       continue;
     }
     body.innerHTML = `
+      <div class="seg" style="margin-bottom:8px"><button class="segBtn on" data-src="itunes">🎵 iTunes</button><button class="segBtn" data-src="yt">▶️ YouTube</button></div>
       <div class="row"><input class="pSearch" placeholder="搜尋歌名或歌手"><button class="btn mini pGo">搜尋</button></div>
       <div class="pResults"></div>
       <div class="pSel"></div>
       <input class="pHint" placeholder="提示（讓上台的人快速知道這是什麼歌）">`;
+    el.dataset.src = 'itunes';
+    el.querySelectorAll('.segBtn').forEach(b => b.onclick = () => {
+      el.dataset.src = b.dataset.src;
+      el.querySelectorAll('.segBtn').forEach(x => x.classList.toggle('on', x === b));
+      el.querySelector('.pResults').innerHTML = '';
+    });
     const doSearch = async () => {
       const term = el.querySelector('.pSearch').value.trim();
       if (term === '') return;
-      el.querySelector('.pResults').innerHTML = '<p class="dim">搜尋中…</p>';
+      const box = el.querySelector('.pResults');
+      box.innerHTML = '<p class="dim">搜尋中…</p>';
+      if (el.dataset.src === 'yt') {
+        try { renderYtResults(el, side, await ytSearch(term)); }
+        catch (e) { box.innerHTML = `<p class="dim">YouTube 搜尋失敗（${esc(e.message || e.name || '未知')}），再試一次。</p>`; }
+        return;
+      }
       try { renderResults(el, side, await itunesSearch(term)); }
       catch (e) {
         const why = e.message === 'rate' ? '被 Apple 限流'
           : e.name === 'AbortError' ? '連線逾時（10 秒）'
           : (e.message || e.name || '未知錯誤');
-        el.querySelector('.pResults').innerHTML = `<p class="dim">搜尋失敗（${esc(why)}），等幾秒再按一次搜尋。</p>`;
+        box.innerHTML = `<p class="dim">搜尋失敗（${esc(why)}），等幾秒再按一次搜尋。</p>`;
       }
     };
     el.querySelector('.pGo').onclick = doSearch;
@@ -864,6 +877,59 @@ function renderResults(el, side, results) {
     stopAudio(); box.innerHTML = ''; renderSelected(el, side);
   });
   updatePreviewBtns();
+}
+
+// ===== YouTube 搜尋（Piped，非 apple 網域，繞開 iOS 對 itunes 的封鎖）=====
+const PIPED_INSTANCES = ['https://pipedapi.kavin.rocks', 'https://pipedapi.adminforge.de', 'https://pipedapi.leptons.xyz', 'https://api.piped.yt'];
+let pipedActive = null;
+async function pipedFetch(path) {
+  const list = pipedActive ? [pipedActive, ...PIPED_INSTANCES.filter(i => i !== pipedActive)] : PIPED_INSTANCES;
+  let lastErr;
+  for (const inst of list) {
+    try {
+      const r = await Promise.race([fetch(inst + path), new Promise((_, x) => setTimeout(() => x(new Error('逾時')), 8000))]);
+      if (r.ok === false) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      pipedActive = inst;
+      return j;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('全部實例都連不到');
+}
+async function ytSearch(term) {
+  const j = await pipedFetch('/search?q=' + encodeURIComponent(term) + '&filter=music_songs');
+  return (j.items || []).filter(x => x.url && x.url.includes('watch?v=')).map(x => ({
+    title: x.title, artist: x.uploaderName || '', art: x.thumbnail || '',
+    videoId: x.url.split('watch?v=')[1].split('&')[0], url: null,
+  }));
+}
+// ponytail: 音訊網址有時效（約數小時），派對單場玩沒問題；擺久失效就重選一次
+async function ytStreamUrl(videoId) {
+  const j = await pipedFetch('/streams/' + videoId);
+  const streams = (j.audioStreams || []).filter(s => s.url);
+  if (streams.length === 0) throw new Error('這首沒有音訊串流');
+  streams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+  return streams[0].url;
+}
+function renderYtResults(el, side, songs) {
+  const box = el.querySelector('.pResults');
+  if (songs.length === 0) { box.innerHTML = '<p class="dim">找不到歌</p>'; return; }
+  box.innerHTML = songs.map((sg, i) => songRow(sg, {
+    buttons: `<button class="btn mini ghost ytTry" data-i="${i}">▶</button><button class="btn mini ytPick" data-i="${i}">選</button>`,
+  })).join('');
+  box.querySelectorAll('.ytTry').forEach(b => b.onclick = async () => {
+    const sg = songs[+b.dataset.i]; const old = b.textContent; b.textContent = '…';
+    try { if (sg.url == null) sg.url = await ytStreamUrl(sg.videoId); togglePreview(sg.url); b.textContent = old; }
+    catch (e) { toast('取音訊失敗：' + (e.message || '')); b.textContent = '▶'; }
+  });
+  box.querySelectorAll('.ytPick').forEach(b => b.onclick = async () => {
+    const sg = songs[+b.dataset.i]; b.textContent = '取音訊…';
+    try {
+      if (sg.url == null) sg.url = await ytStreamUrl(sg.videoId);
+      pending[side].song = { title: sg.title, artist: sg.artist, art: sg.art, url: sg.url };
+      stopAudio(); box.innerHTML = ''; renderSelected(el, side);
+    } catch (e) { toast('取音訊失敗，換一首：' + (e.message || '')); b.textContent = '選'; }
+  });
 }
 
 function renderSelected(el, side) {
