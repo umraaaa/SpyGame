@@ -12,9 +12,6 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v24';  // 每次改版就 +1，方便在手機上確認抓到最新程式
-$('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
-
 // iOS（含偽裝成 Mac 的 iPadOS）：這些裝置的網頁請求打不到 itunes，搜尋改由非 iOS 裝置代打
 const IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -102,17 +99,6 @@ async function itunesSearch(term) {
     // 3. 定義 JSONP 回應處理函式 (掛在全域下)
     window[cb] = (data) => {
       cleanup();
-      // 直接把結果丟到網頁畫面上，強迫它顯示出來
-      const debugText = document.createElement('div');
-      debugText.style.position = 'fixed';
-      debugText.style.bottom = '0';
-      debugText.style.backgroundColor = 'black';
-      debugText.style.color = 'white';
-      debugText.style.padding = '10px';
-      debugText.style.zIndex = '9999';
-      debugText.textContent = '搜尋到 ' + (data.resultCount || 0) + ' 首歌。第一首是：' + (data.results?.[0]?.trackName || '無');
-      document.body.appendChild(debugText);
-      
       resolve(data.results || []);
     };
 
@@ -255,8 +241,9 @@ function workerDoSearch(m, conn) {
 }
 // 房主：把 iOS 的搜尋請求派給一台非 iOS 裝置（房主自己非 iOS 就自己做）
 function hostRouteSearchReq(term, reqId, requesterId) {
-  const worker = H.players.find(p => p.connected && p.isIOS === false);
-  if (worker == null) { hostDeliverSearchRes(requesterId, { reqId, error: '房間內沒有非 iOS 裝置可代打搜尋' }); return; }
+  const workers = H.players.filter(p => p.connected && p.isIOS === false);
+  if (workers.length === 0) { hostDeliverSearchRes(requesterId, { reqId, error: '房間內沒有非 iOS 裝置可代打搜尋' }); return; }
+  const worker = workers[Math.floor(Math.random() * workers.length)]; // 隨機分攤給任一台非 iOS
   if (worker.id === 'HOST') {
     itunesSearch(term).then(
       results => hostDeliverSearchRes(requesterId, { reqId, results }),
