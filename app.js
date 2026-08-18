@@ -12,8 +12,12 @@ const rand = n => Math.floor(Math.random() * n);
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 const MIN_PLAYERS = 4; // ponytail: 規格最小十人；測試暫時調成 4，正式改回 10
-const VERSION = 'v23';  // 每次改版就 +1，方便在手機上確認抓到最新程式
+const VERSION = 'v24';  // 每次改版就 +1，方便在手機上確認抓到最新程式
 $('.logo').insertAdjacentHTML('beforeend', ` <span class="ver">${VERSION}</span>`);
+
+// iOS（含偽裝成 Mac 的 iPadOS）：這些裝置的網頁請求打不到 itunes，搜尋改由非 iOS 裝置代打
+const IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 let toastTimer = null;
 function toast(msg) {
@@ -170,7 +174,7 @@ function createRoom(name, contentMode, voteMode) {
   peer = new Peer('mspy-' + roomCode);
   peer.on('open', () => {
     isHost = true; myId = 'HOST'; myName = name;
-    H.players = [{ id: 'HOST', name, ready: false, connected: true, isHost: true }];
+    H.players = [{ id: 'HOST', name, ready: false, connected: true, isHost: true, isIOS: IS_IOS }];
     enterGame();
     broadcast();
   });
@@ -200,10 +204,14 @@ function joinRoom(name, code) {
     hostConn = peer.connect('mspy-' + code, { reliable: true });
     hostConn.on('open', () => {
       myId = peer.id; myName = name; roomCode = code;
-      hostConn.send({ t: 'join', name });
+      hostConn.send({ t: 'join', name, isIOS: IS_IOS });
       enterGame();
     });
-    hostConn.on('data', m => { if (m.t === 'state') { lastState = m.s; onState(); } });
+    hostConn.on('data', m => {
+      if (m.t === 'state') { lastState = m.s; onState(); }
+      else if (m.t === 'searchDo') { workerDoSearch(m, hostConn); }
+      else if (m.t === 'searchRes') { onSearchRes(m); }
+    });
     hostConn.on('close', () => toast('與房主斷線了'));
   });
 }
@@ -216,13 +224,66 @@ function send(m) {
 
 function isConnected(id) { const p = H.players.find(x => x.id === id); return p != null && p.connected; }
 
+// ===== 搜尋代理（iOS 的 iTunes 搜尋交給房間內任一台非 iOS 裝置代打）=====
+const searchPending = new Map(); // reqId -> {resolve, reject, timer}
+let searchSeq = 0;
+
+// iOS 裝置呼叫：把搜尋丟給非 iOS worker，等結果回來（結果格式同 itunesSearch）
+function relaySearch(term) {
+  return new Promise((resolve, reject) => {
+    const reqId = (myId || 'me') + '_' + (++searchSeq);
+    const timer = setTimeout(() => {
+      if (searchPending.has(reqId)) { searchPending.delete(reqId); reject(new Error('代理逾時（沒有非 iOS 裝置回應）')); }
+    }, 12000);
+    searchPending.set(reqId, { resolve, reject, timer });
+    send({ t: 'searchReq', term, reqId });
+  });
+}
+function onSearchRes(payload) {
+  const p = searchPending.get(payload.reqId);
+  if (p == null) return;
+  clearTimeout(p.timer); searchPending.delete(payload.reqId);
+  if (payload.error) p.reject(new Error(payload.error));
+  else p.resolve(payload.results || []);
+}
+// worker（非 iOS 客戶端）收到代打請求：本地跑 itunesSearch，把結果送回房主
+function workerDoSearch(m, conn) {
+  itunesSearch(m.term).then(
+    results => conn.send({ t: 'searchRes', reqId: m.reqId, requester: m.requester, results }),
+    err => conn.send({ t: 'searchRes', reqId: m.reqId, requester: m.requester, error: String((err && err.message) || err) })
+  );
+}
+// 房主：把 iOS 的搜尋請求派給一台非 iOS 裝置（房主自己非 iOS 就自己做）
+function hostRouteSearchReq(term, reqId, requesterId) {
+  const worker = H.players.find(p => p.connected && p.isIOS === false);
+  if (worker == null) { hostDeliverSearchRes(requesterId, { reqId, error: '房間內沒有非 iOS 裝置可代打搜尋' }); return; }
+  if (worker.id === 'HOST') {
+    itunesSearch(term).then(
+      results => hostDeliverSearchRes(requesterId, { reqId, results }),
+      err => hostDeliverSearchRes(requesterId, { reqId, error: String((err && err.message) || err) })
+    );
+    return;
+  }
+  const wc = conns.get(worker.id);
+  if (wc && wc.open) wc.send({ t: 'searchDo', term, reqId, requester: requesterId });
+  else hostDeliverSearchRes(requesterId, { reqId, error: '代打裝置已離線' });
+}
+// 房主：把結果送回原本發問的人（房主自己就是發問者時直接處理）
+function hostDeliverSearchRes(requesterId, payload) {
+  if (requesterId === 'HOST') { onSearchRes(payload); return; }
+  const rc = conns.get(requesterId);
+  if (rc && rc.open) rc.send({ t: 'searchRes', ...payload });
+}
+
 // ===== 房主邏輯 =====
 function hostHandle(m, pid) {
   const p = H.players.find(x => x.id === pid);
   if (m.t === 'join') {
-    if (p) { p.connected = true; p.name = m.name; }
-    else H.players.push({ id: pid, name: m.name, ready: false, connected: true, isHost: false });
+    if (p) { p.connected = true; p.name = m.name; p.isIOS = m.isIOS === true; }
+    else H.players.push({ id: pid, name: m.name, ready: false, connected: true, isHost: false, isIOS: m.isIOS === true });
   }
+  else if (m.t === 'searchReq') { hostRouteSearchReq(m.term, m.reqId, pid); return; } // 點對點，不 broadcast
+  else if (m.t === 'searchRes') { hostDeliverSearchRes(m.requester, { reqId: m.reqId, results: m.results, error: m.error }); return; }
   else if (m.t === 'lobbyReady') { if (p) p.ready = m.v; }
   else if (m.t === 'queueAdd') {
     if (!H.queues[pid]) H.queues[pid] = [];
@@ -818,7 +879,7 @@ function ensurePanels(mode) {
       continue;
     }
     body.innerHTML = `
-      <div class="seg" style="margin-bottom:8px"><button class="segBtn on" data-src="itunes">🎵 iTunes</button><button class="segBtn" data-src="yt">▶️ YouTube</button></div>
+      ${IS_IOS ? '' : '<div class="seg" style="margin-bottom:8px"><button class="segBtn on" data-src="itunes">🎵 iTunes</button><button class="segBtn" data-src="yt">▶️ YouTube</button></div>'}
       <div class="row"><input class="pSearch" placeholder="搜尋歌名或歌手"><button class="btn mini pGo">搜尋</button></div>
       <div class="pResults"></div>
       <div class="pSel"></div>
@@ -833,13 +894,13 @@ function ensurePanels(mode) {
       const term = el.querySelector('.pSearch').value.trim();
       if (term === '') return;
       const box = el.querySelector('.pResults');
-      box.innerHTML = '<p class="dim">搜尋中…</p>';
+      box.innerHTML = IS_IOS ? '<p class="dim">請房間內非 iOS 裝置代為搜尋中…</p>' : '<p class="dim">搜尋中…</p>';
       if (el.dataset.src === 'yt') {
         try { renderYtResults(el, side, await ytSearch(term)); }
         catch (e) { box.innerHTML = `<p class="dim">YouTube 搜尋失敗（${esc(e.message || e.name || '未知')}），再試一次。</p>`; }
         return;
       }
-      try { renderResults(el, side, await itunesSearch(term)); }
+      try { renderResults(el, side, await (IS_IOS ? relaySearch(term) : itunesSearch(term))); }
       catch (e) {
         const why = e.message === 'rate' ? '被 Apple 限流'
           : e.name === 'AbortError' ? '連線逾時（10 秒）'
